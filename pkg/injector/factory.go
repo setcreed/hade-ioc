@@ -1,5 +1,7 @@
 package injector
 
+import "reflect"
+
 var BeanFactory *FactoryImpl
 
 func init() {
@@ -33,4 +35,28 @@ func (f *FactoryImpl) Get(bean interface{}) interface{} {
 		return value.Interface()
 	}
 	return nil
+}
+
+// 处理依赖注入
+func (f *FactoryImpl) Apply(bean interface{}) {
+	if bean == nil {
+		return
+	}
+	beanValue := reflect.ValueOf(bean)
+	if beanValue.Kind() == reflect.Ptr {
+		beanValue = beanValue.Elem()
+	}
+	if beanValue.Kind() != reflect.Struct {
+		return
+	}
+
+	for i := 0; i < beanValue.NumField(); i++ {
+		field := beanValue.Type().Field(i)
+		// 注入对象首字母需要大写
+		if beanValue.Field(i).CanSet() && field.Tag.Get("inject") != "" {
+			if k := f.Get(field.Type); k != nil {
+				beanValue.Field(i).Set(reflect.ValueOf(k))
+			}
+		}
+	}
 }
