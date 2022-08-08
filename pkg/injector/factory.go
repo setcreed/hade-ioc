@@ -1,6 +1,10 @@
 package injector
 
-import "reflect"
+import (
+	"fmt"
+	"github.com/shenyisyn/goft-expr/src/expr"
+	"reflect"
+)
 
 var BeanFactory *FactoryImpl
 
@@ -10,10 +14,11 @@ func init() {
 
 type FactoryImpl struct {
 	beanMapper BeanMapper
+	ExprMap    map[string]interface{}
 }
 
 func NewFactory() *FactoryImpl {
-	return &FactoryImpl{beanMapper: make(BeanMapper)}
+	return &FactoryImpl{beanMapper: make(BeanMapper), ExprMap: make(map[string]interface{})}
 }
 
 func (f *FactoryImpl) Set(beanList ...interface{}) {
@@ -54,8 +59,19 @@ func (f *FactoryImpl) Apply(bean interface{}) {
 		field := beanValue.Type().Field(i)
 		// 注入对象首字母需要大写
 		if beanValue.Field(i).CanSet() && field.Tag.Get("inject") != "" {
-			if k := f.Get(field.Type); k != nil {
-				beanValue.Field(i).Set(reflect.ValueOf(k))
+			// 不同方式注入
+			if field.Tag.Get("inject") == "-" {
+				// 在容器里找，有就赋值
+				if k := f.Get(field.Type); k != nil {
+					beanValue.Field(i).Set(reflect.ValueOf(k))
+				}
+			} else {
+				// 表达式方式处理注入
+				fmt.Println("使用了表达式的方式注入")
+				resultSet := expr.BeanExpr(field.Tag.Get("inject"), f.ExprMap)
+				if resultSet != nil && !resultSet.IsEmpty() {
+					beanValue.Field(i).Set(reflect.ValueOf(resultSet[0]))
+				}
 			}
 		}
 	}
