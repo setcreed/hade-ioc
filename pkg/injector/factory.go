@@ -1,7 +1,6 @@
 package injector
 
 import (
-	"fmt"
 	"github.com/shenyisyn/goft-expr/src/expr"
 	"reflect"
 )
@@ -59,19 +58,41 @@ func (f *FactoryImpl) Apply(bean interface{}) {
 		field := beanValue.Type().Field(i)
 		// 注入对象首字母需要大写
 		if beanValue.Field(i).CanSet() && field.Tag.Get("inject") != "" {
-			// 不同方式注入
-			if field.Tag.Get("inject") == "-" {
-				// 在容器里找，有就赋值
+			// 如果是表达式注入 支持多例
+			if field.Tag.Get("inject") != "-" {
+				// 表达式方式处理注入
+				resultSet := expr.BeanExpr(field.Tag.Get("inject"), f.ExprMap)
+				if resultSet != nil && !resultSet.IsEmpty() {
+					retValue := resultSet[0]
+					if retValue != nil {
+						f.Set(retValue)
+						beanValue.Field(i).Set(reflect.ValueOf(retValue))
+					}
+				}
+			} else {
+				// 如果是 inject:"-"，直接从容器里找
 				if k := f.Get(field.Type); k != nil {
 					beanValue.Field(i).Set(reflect.ValueOf(k))
 				}
-			} else {
-				// 表达式方式处理注入
-				fmt.Println("使用了表达式的方式注入")
-				resultSet := expr.BeanExpr(field.Tag.Get("inject"), f.ExprMap)
-				if resultSet != nil && !resultSet.IsEmpty() {
-					beanValue.Field(i).Set(reflect.ValueOf(resultSet[0]))
-				}
+			}
+		}
+	}
+}
+
+func (f *FactoryImpl) Config(cfgs ...interface{}) {
+	for _, cfg := range cfgs {
+		t := reflect.TypeOf(cfg)
+		if t.Kind() != reflect.Ptr {
+			panic("require ptr object")
+		}
+		f.Set(cfg)                // 把config本身也加入bean
+		f.ExprMap[t.Name()] = cfg // 自动构建 exprMap
+		value := reflect.ValueOf(cfg)
+		for i := 0; i < t.NumMethod(); i++ {
+			method := value.Method(i)
+			callRet := method.Call(nil)
+			if callRet != nil && len(callRet) == 1 {
+				f.Set(callRet[0].Interface())
 			}
 		}
 	}
